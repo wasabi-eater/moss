@@ -3,7 +3,8 @@ use std::fmt;
 use itertools::Itertools;
 
 use crate::{span::{Span, Spanned}, hir::{BinaryOperator, UnaryOperator}, types::Type};
-use crate::symbol::Symbol;
+use crate::symbol::{Symbol, SymbolArena};
+
 #[derive(PartialEq)]
 pub(crate) struct Expression {
     pub(crate) kind: ExpressionKind,
@@ -44,10 +45,10 @@ impl fmt::Debug for Expression {
         match &self.kind {
             ExpressionKind::BinaryOp { left, op, right } => write!(f, "({:?} {:?} {:?}: {:?})", left, op, right, self.type_),
             ExpressionKind::PrefixUnaryOp { op, operand } => write!(f, "({:?} {:?}: {:?})", op, operand, self.type_),
-            ExpressionKind::Variable { name } => write!(f, "{:?}: {:?}", name, self.type_),
-            ExpressionKind::Assingment { var_name, value } => write!(f, "{:?} = {:?}", var_name, value),
+            ExpressionKind::Variable { name } => write!(f, "Symbol({}): {:?}", name.get_id(), self.type_),
+            ExpressionKind::Assingment { var_name, value } => write!(f, "Symbol({}) = {:?}", var_name.inner.get_id(), value),
             ExpressionKind::Block { statements } => write!(f, "{{ {} }}", statements.iter().map(|s| format!("{:?}", s)).join("; ")),
-            ExpressionKind::DeclareVar { is_const, name, value, scope } => write!(f, "{} {:?} = {:?} in {:?}: {:?}", if *is_const { "let" } else { "var" }, name, value, scope, self.type_),
+            ExpressionKind::DeclareVar { is_const, name, value, scope } => write!(f, "{} Symbol({}) = {:?} in {:?}: {:?}", if *is_const { "let" } else { "var" }, name.inner.get_id(), value, scope, self.type_),
             ExpressionKind::Literal(literal) => write!(f, "{:?}", literal),
         }
     }

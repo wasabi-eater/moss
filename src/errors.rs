@@ -2,7 +2,7 @@ use std::fmt;
 use crate::span::{Position, Span, Spanned};
 use crate::token::Token;
 use crate::types::{Type, TypeVar};
-use crate::symbol::Symbol;
+use crate::symbol::{Symbol, SymbolArena};
 use crate::hir;
 use itertools::Itertools;
 
@@ -38,7 +38,7 @@ impl Error {
     pub fn assign_const_var(name: Spanned<Symbol>, span: Span) -> Self {
         Error { kind: ErrorKind::NameError(NameError::AssignConstVar { name }), span }
     }
-    pub fn message(&self) -> String {
+    pub fn message(&self, symbol_arena: &SymbolArena) -> String {
         match &self.kind {
             ErrorKind::TypeError(type_error) => match type_error {
                 TypeError::MismatchedTypes { expected, found } => 
@@ -52,9 +52,9 @@ impl Error {
             },
             ErrorKind::NameError(name_error) => match name_error {
                 NameError::UndefinedVariable { symbol } => 
-                    format!("未定義の変数: `{}` は定義されていません", symbol.name()),
+                    format!("未定義の変数: {}", symbol_arena.get_name(symbol).unwrap()),
                 NameError::AssignConstVar { name } => 
-                    format!("定数への代入: `{}` は定数として宣言されているため、値を変更できません", name.inner.name()),
+                    format!("定数への代入: {}", symbol_arena.get_name(&name.inner).unwrap()),
             },
             ErrorKind::SyntaxError(syntax_error) => {
                 format!("構文エラー {} 予期されたトークン {} 実際のトークン {}",
@@ -103,4 +103,17 @@ pub(crate) struct SyntaxError {
     pub unexpected: Vec<String>,
     pub expected: Vec<String>,
     pub message: Vec<String>,
+}
+
+impl fmt::Display for NameError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            NameError::UndefinedVariable { symbol } => {
+                write!(f, "未定義の変数: Symbol({})", symbol.get_id())
+            }
+            NameError::AssignConstVar { name } => {
+                write!(f, "定数への代入: Symbol({})", name.inner.get_id())
+            }
+        }
+    }
 }

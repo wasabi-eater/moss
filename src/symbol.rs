@@ -7,16 +7,11 @@ use std::fmt;
 #[derive(Clone, Eq)]
 pub struct Symbol {
     pub(crate) id: usize,
-    pub(crate) name: Rc<str>,
 }
 
 impl Symbol {
     pub fn get_id(&self) -> usize {
         self.id
-    }
-
-    pub fn name(&self) -> Rc<str> {
-        Rc::clone(&self.name)
     }
 }
 
@@ -31,21 +26,19 @@ impl std::hash::Hash for Symbol {
         self.id.hash(state);
     }
 }
-impl fmt::Debug for Symbol {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self.name)
-    }
-}
+
 /// シンボルを生成・管理する構造体
 #[derive(Debug, Clone)]
-pub struct SymbolMaker {
+pub struct SymbolArena {
+    names: Vec<Rc<str>>,
     ids: HashMap<Rc<str>, Symbol>,
     next_id: usize,
 }
 
-impl SymbolMaker {
+impl SymbolArena {
     pub fn new() -> Self {
-        SymbolMaker {
+        SymbolArena {
+            names: Vec::new(),
             ids: HashMap::new(),
             next_id: 0,
         }
@@ -54,10 +47,25 @@ impl SymbolMaker {
     pub fn symbol<'a>(&mut self, name: impl Into<Rc<str>>) -> Symbol {
         let name = name.into();
         self.ids.get(name.as_ref()).cloned().unwrap_or_else(|| {
-            let symbol = Symbol { id: self.next_id, name: Rc::from(name.clone()) };
-            self.ids.insert(name, symbol.clone());
+            let symbol = Symbol { id: self.next_id };
+            self.ids.insert(name.clone(), symbol.clone());
+            self.names.push(name);
             self.next_id += 1;
             symbol
         })
+    }
+
+    pub fn get_name(&self, symbol: &Symbol) -> Option<Rc<str>> {
+        if symbol.id < self.names.len() {
+            Some(Rc::clone(&self.names[symbol.id]))
+        } else {
+            None
+        }
+    }
+}
+
+impl fmt::Debug for Symbol {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Symbol({})", self.id)
     }
 } 

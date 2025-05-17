@@ -430,7 +430,7 @@ mod tests {
             var
         ).unwrap();
         let mut infer = Infer::new(Env::new());
-        let name = hir_maker.symbol_maker.symbol("x");
+        let name = hir_maker.symbol_arena.symbol("x");
         assert_eq!(infer.infer(&expr), thir::Expression {
             kind: thir::ExpressionKind::DeclareVar {
                 is_const: true,
@@ -464,7 +464,7 @@ mod tests {
         assert!(result.is_some());
         assert_eq!(errors.len(), 1);
         
-        let error_messages = infer.errors.iter().map(|e| e.message()).collect_vec();
+        let error_messages = infer.errors.iter().map(|e| e.message(&hir_maker.symbol_arena)).collect_vec();
         assert_eq!(error_messages.len(), 1);
         assert!(error_messages[0].contains("未定義の変数"));
     }
@@ -489,7 +489,7 @@ mod tests {
         assert!(result.is_some());
         assert_eq!(errors.len(), 1);
         
-        let error_messages = infer.errors.iter().map(|e| e.message()).collect_vec();
+        let error_messages = infer.errors.iter().map(|e| e.message(&hir_maker.symbol_arena)).collect_vec();
         assert_eq!(error_messages.len(), 1);
         assert!(error_messages[0].contains("無効な二項演算"));
     }

@@ -1,23 +1,23 @@
 use crate::ast::{self, Expression as AstExpression, ExpressionKind as AstExpressionKind};
 use crate::errors::Error;
-use crate::symbol::SymbolMaker;
+use crate::symbol::SymbolArena;
 use super::core::*;
 use std::rc::Rc;
 use crate::span::{Span, Spanned};
 /// ASTからHIRへの変換を行うための構造体
 pub(crate) struct Maker {
-    pub(crate) symbol_maker: SymbolMaker,
+    pub(crate) symbol_arena: SymbolArena,
 }
 
 impl Maker {
     pub fn new() -> Self {
         Maker {
-            symbol_maker: SymbolMaker::new()
+            symbol_arena: SymbolArena::new()
         }
     }
 
     pub fn variable(&mut self, name: Rc<str>, span: Span) -> Result<Expression, Error> {
-        let name = self.symbol_maker.symbol(name);
+        let name = self.symbol_arena.symbol(name);
         Ok(Expression {
             kind: ExpressionKind::Variable { name },
             span,
@@ -67,7 +67,7 @@ impl Maker {
     }
 
     pub fn assignment(&mut self, name: Spanned<Rc<str>>, value: Expression, span: Span) -> Result<Expression, Error> {
-        let name = name.map(|name| self.symbol_maker.symbol(name));
+        let name = name.map(|name| self.symbol_arena.symbol(name));
         Ok(Expression {
             kind: ExpressionKind::Assignment { name, value: Box::new(value) },
             span
@@ -82,7 +82,7 @@ impl Maker {
     }
 
     pub fn declare_var(&mut self, name: Spanned<Rc<str>>, value: Expression, span: Span, is_const: bool, scope: Expression) -> Result<Expression, Error> {
-        let name = name.map(|name| self.symbol_maker.symbol(name));
+        let name = name.map(|name| self.symbol_arena.symbol(name));
         Ok(Expression {
             kind: ExpressionKind::DeclareVar {
                 name,
@@ -261,7 +261,7 @@ mod tests {
 
         let ExpressionKind::DeclareVar { is_const, name, value, scope } = &statements[0].kind else { panic!("Expected DeclareVar") };
         assert_eq!(*is_const, true);
-        assert_eq!(name.inner.name().as_ref(), "x");
+        assert_eq!(hir_maker.symbol_arena.get_name(&name.inner).unwrap().as_ref(), "x");
         match &value.kind {
             ExpressionKind::Literal(Literal::Int(n)) => assert_eq!(n.as_ref(), "42"),
             _ => panic!("Expected Int literal"),
@@ -269,7 +269,7 @@ mod tests {
         let ExpressionKind::Block { statements: inner_statements } = &scope.kind else { panic!("Expected Block") };
         assert_eq!(inner_statements.len(), 1);
         match &inner_statements[0].kind {
-            ExpressionKind::Variable { name } => assert_eq!(name.name().as_ref(), "x"),
+            ExpressionKind::Variable { name } => assert_eq!(hir_maker.symbol_arena.get_name(name).unwrap().as_ref(), "x"),
             _ => panic!("Expected Variable"),
         }
     }

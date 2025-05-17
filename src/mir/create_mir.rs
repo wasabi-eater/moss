@@ -124,7 +124,7 @@ impl Maker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::symbol::SymbolMaker;
+    use crate::symbol::SymbolArena;
     use crate::span::{Span, Spanned};
     use crate::hir::{BinaryOperator as HirBinaryOperator};
     use crate::thir::{Expression, ExpressionKind, Literal as ThirLiteral};
@@ -208,12 +208,12 @@ mod tests {
 
     #[test]
     fn test_variable_declaration() {
-        let mut id_maker = SymbolMaker::new();
+        let mut symbol_arena = SymbolArena::new();
         let expr = Expression {
             kind: ExpressionKind::DeclareVar {
                 is_const: true,
                 name: Spanned {
-                    inner: id_maker.symbol("a".to_string()),
+                    inner: symbol_arena.symbol("a".to_string()),
                     span: default_span()
                 },
                 value: Box::new(Expression {
@@ -223,7 +223,7 @@ mod tests {
                 }),
                 scope: Box::new(Expression {
                     kind: ExpressionKind::Variable {
-                        name: id_maker.symbol("a".to_string())
+                        name: symbol_arena.symbol("a".to_string())
                     },
                     span: default_span(),
                     type_: Type::int()
