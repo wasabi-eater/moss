@@ -88,6 +88,14 @@ parser! {
     }
 }
 
+// Float parser
+parser! {
+    fn float[Input]()(Input) -> Expression
+    where [Input: Stream]
+    {
+        token_fn(Token::float_literal).map_spanned(ExpressionKind::float)
+    }
+}
 // Boolean parser
 parser! {
     fn boolean[Input]()(Input) -> Expression
@@ -114,6 +122,7 @@ parser! {
         choice((
             boolean(),
             int(),
+            float(),
             identifier().map_spanned(ExpressionKind::variable),
             string_literal(),
             block().map_spanned(ExpressionKind::block),
@@ -397,6 +406,13 @@ mod tests {
         let tokens = vec![Token::new(TokenKind::IntLiteral(Rc::from("42")), Span::with_lc(1, 1, 1, 3))];
         let result = expr().easy_parse(tokens.as_ref());
         assert_eq!(result, Ok((Spanned::new(ExpressionKind::int(Rc::from("42")), Span::with_lc(1, 1, 1, 3)), [].as_ref())));
+    }
+    #[test]
+    fn test_float_literal() {
+        //42.0
+        let tokens = vec![Token::new(TokenKind::FloatLiteral(Rc::from("42.0")), Span::with_lc(1, 1, 1, 5))];
+        let result = expr().easy_parse(tokens.as_ref());
+        assert_eq!(result, Ok((Spanned::new(ExpressionKind::float(Rc::from("42.0")), Span::with_lc(1, 1, 1, 5)), [].as_ref())));
     }
 
     #[test]
