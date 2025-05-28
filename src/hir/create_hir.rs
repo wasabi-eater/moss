@@ -285,4 +285,95 @@ mod tests {
             _ => panic!("Expected Variable"),
         }
     }
-} 
+    #[test]
+    fn test_make_hir_expr_if_expression() {
+        let span = default_span();
+        // if 1 == 2 { 3 } else { 4 }
+        let left = AstExpression::new(AstExpressionKind::int("1"), span);
+        let right = AstExpression::new(AstExpressionKind::int("2"), span);
+        let op = Spanned::new("==".to_string(), span);
+        let cond = AstExpression::new(AstExpressionKind::binary_operation(left, op, right), span);
+
+        let then_expr = AstExpression::new(AstExpressionKind::int("3"), span);
+        let else_expr = AstExpression::new(AstExpressionKind::int("4"), span);
+
+        let if_expr = AstExpression::new(
+            AstExpressionKind::If(
+                Box::new(cond),
+                Box::new(then_expr),
+                Some(Box::new(else_expr))
+            ),
+            span
+        );
+
+        let mut hir_maker = Maker::new();
+        let result = hir_maker.from_ast_expr(&if_expr);
+
+        assert!(result.is_ok());
+        let result = result.unwrap();
+        let ExpressionKind::If { cond, then, otherwise} = result.kind else {
+            panic!("Expected If expression")
+        };
+
+        let ExpressionKind::BinaryOp { op, left, right } = cond.kind else {
+            panic!("Expected BinaryOp in cond")
+        };
+        assert_eq!(op.inner, BinaryOperator::Equal);
+        match left.kind {
+            ExpressionKind::Literal(Literal::Int(ref n)) => assert_eq!(n.as_ref(), "1"),
+            _ => panic!("Expected Int literal on left"),
+        }
+        match right.kind {
+            ExpressionKind::Literal(Literal::Int(ref n)) => assert_eq!(n.as_ref(), "2"),
+            _ => panic!("Expected Int literal on right"),
+        }
+
+        // then: 3
+        match then.kind {
+            ExpressionKind::Literal(Literal::Int(ref n)) => assert_eq!(n.as_ref(), "3"),
+            _ => panic!("Expected Int literal in then"),
+        }
+        // else: 4
+        let otherwise = otherwise.expect("Expected else branch");
+        match otherwise.kind {
+            ExpressionKind::Literal(Literal::Int(ref n)) => assert_eq!(n.as_ref(), "4"),
+            _ => panic!("Expected Int literal in else"),
+        }
+    }
+
+    #[test]
+    fn test_make_hir_expr_if_expression_without_else() {
+        let span = default_span();
+        // if true { 10 }
+        let cond = AstExpression::new(AstExpressionKind::Bool(true), span);
+        let then_expr = AstExpression::new(AstExpressionKind::int("10"), span);
+
+        let if_expr = AstExpression::new(
+            AstExpressionKind::If(
+                Box::new(cond),
+                Box::new(then_expr),
+                None
+            ),
+            span
+        );
+
+        let mut hir_maker = Maker::new();
+        let result = hir_maker.from_ast_expr(&if_expr);
+
+        assert!(result.is_ok());
+        let result = result.unwrap();
+        
+        let ExpressionKind::If { cond, then, otherwise } = result.kind else {
+            panic!("Expected If expression")
+        };
+        match cond.kind {
+            ExpressionKind::Literal(Literal::Bool(b)) => assert_eq!(b, true),
+            _ => panic!("Expected Bool literal in cond"),
+        }
+        match then.kind {
+            ExpressionKind::Literal(Literal::Int(ref n)) => assert_eq!(n.as_ref(), "10"),
+            _ => panic!("Expected Int literal in then"),
+        }
+        assert!(otherwise.is_none());
+    }
+}
