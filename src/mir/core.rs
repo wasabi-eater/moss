@@ -1,9 +1,12 @@
 use core::fmt;
+use std::cell::{OnceCell, RefCell};
+use std::hash;
 use std::rc::Rc;
-use std::collections::{HashMap, LinkedList};
-
+use std::collections::{HashMap, HashSet, LinkedList};
+use combine::stream::state;
+use itertools::Itertools;
+use literally::hset;
 use crate::types::Type;
-
 /// リテラル値を表現する列挙型
 ///
 #[derive(Clone, PartialEq)]
@@ -124,7 +127,7 @@ impl Statement {
             Self::MoveBinding { from, to: _ } => vec![from.clone()],
             Self::CopyAssign { from, to: _ } => vec![from.clone()],
             Self::MoveAssign { from, to: _ } => vec![from.clone()],
-            Self::Drop(operand) => vec![operand.clone()]
+            Self::Drop(operand) => vec![operand.clone()],
         }
     }
 
@@ -135,24 +138,203 @@ impl Statement {
             Self::MoveBinding { from: _, to } => vec![to.clone()],
             Self::CopyAssign { from: _, to } => vec![to.clone()],
             Self::MoveAssign { from: _, to } => vec![to.clone()],
-            Self::Drop(_) => vec![]
+            Self::Drop(_) => vec![],
         }
     }
 }
-
+pub(crate) enum Terminator<'blk> {
+    Goto(&'blk SeqBlock<'blk>),
+    IfElse { cond: Operand, then: &'blk SeqBlock<'blk>, otherwise: &'blk SeqBlock<'blk> },
+    Return(Operand),
+}
+impl<'blk> fmt::Debug for Terminator<'blk> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Goto(seq) => write!(f, "goto {:?}", seq),
+            Self::Return(operand) => write!(f, "return {:?}", operand),
+            Self::IfElse { cond, then, otherwise } => write!(f, "if {:?} then {:?} else {:?}", cond, then, otherwise),
+        }
+    }
+}
+impl<'blk> Terminator<'blk> {
+    pub(crate) fn operands(&self) -> Vec<Operand> {
+        match self {
+            Self::Goto(_) => vec![],
+            Self::Return(operand) => vec![operand.clone()],
+            Self::IfElse { cond, then: _, otherwise: _ } => vec![cond.clone()]
+        }
+    }
+    pub(crate) fn shallow_clone(&self) -> Self {
+        match self {
+            Self::Goto(block) => Self::Goto(*block),
+            Self::Return(operand) => Self::Return(operand.clone()),
+            Self::IfElse { cond, then, otherwise } =>
+                Self::IfElse { cond: cond.clone(), then: *then, otherwise: *otherwise }
+        }
+    }
+}
 /// 逐次実行を表現する構造体
 /// 
 /// 文の列を保持し、プログラムの実行順序を表現します。
-#[derive(Clone, PartialEq)]
-pub(crate) struct SequentialExecution {
-    pub(crate) statements: LinkedList<Statement>
+pub(crate) struct SeqBlock<'blk> {
+    pub(crate) preblocks: RefCell<HashSet<&'blk SeqBlock<'blk>>>,
+    pub(crate) statements: RefCell<LinkedList<Statement>>,
+    pub(crate) terminator: RefCell<Terminator<'blk>>,
+    places_used_later: RefCell<Option<HashSet<Place>>>,
+    places_dropped: RefCell<Option<HashSet<Place>>>,
+    places_used: HashSet<Place>,
 }
-impl fmt::Debug for SequentialExecution {
+
+impl<'blk> fmt::Debug for SeqBlock<'blk> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for statement in self.statements.iter() {
+        for statement in self.statements.borrow().iter() {
             write!(f, "{:?};\n", statement)?;
         }
+        write!(f, "{:?}", self.terminator.borrow())?;
         Ok(())
+    }
+}
+impl<'blk> SeqBlock<'blk> {
+    pub(crate) fn new(statements: LinkedList<Statement>, terminator: Terminator<'blk>) -> Self {
+        let places_used =
+            terminator.operands().into_iter()
+            .chain(statements.iter().flat_map(|statement| statement.operands()))
+            .map(|Operand(place)| place)
+            .collect();
+        Self {
+            preblocks: RefCell::new(hset![]),
+            statements: RefCell::new(statements),
+            terminator: RefCell::new(terminator),
+            places_used_later: RefCell::new(None),
+            places_dropped: RefCell::new(None),
+            places_used
+        }
+    }
+    pub(crate) fn set_places_used_later(&self, places_used_later: &HashSet<Place>) {
+        let new_places_used_later = match self.places_used_later.borrow_mut().as_mut() {
+            Some(seq_places_used_later) => {
+                let mut new_places_used_later = HashSet::new();
+                for &place in places_used_later {
+                    if seq_places_used_later.insert(place) {
+                        new_places_used_later.insert(place);
+                    }
+                }
+                new_places_used_later
+            }
+            None => {
+                let mut new_places_used_later = HashSet::new();
+                new_places_used_later.extend(self.places_used.iter().copied());
+                *self.places_used_later.borrow_mut() = Some(new_places_used_later);
+                //cloneすることで、self.places_used_laterへの参照を断っている
+                //self.places_used_laterへの参照が残っていると、SeqBlockのループがあったときに、borrow_mutができない
+                self.places_used_later.borrow().as_ref().unwrap().clone()
+            }
+        };
+        for pre_block in self.preblocks.borrow().iter().copied() {
+            pre_block.set_places_used_later(&new_places_used_later);
+        }
+    }
+    //set_places_used_laterの後で呼ばれる必要がある
+    pub(crate) fn yield_dropping(&self, places: &HashSet<Place>) {
+        if self.places_dropped.borrow().is_none() {
+            self.insert_dropping();
+        }
+        let mut places_dropped = self.places_dropped.borrow_mut();
+        let places_dropped = places_dropped.as_mut().unwrap();
+        let mut places_newly_dropped = HashSet::new();
+        let mut places_dropped_later = HashSet::new();
+        for place in places {
+            if !places_dropped.insert(*place) { continue; }
+            if self.places_used_later.borrow().as_ref().unwrap().contains(&place) {
+                places_dropped_later.insert(*place);
+            }
+            else {
+                places_newly_dropped.insert(*place);
+            }
+        }
+        let places_used: HashSet<Place> =
+            self.terminator.borrow().operands().into_iter().map(|Operand(place)| place)
+            .chain(self.statements.borrow().iter().flat_map(|stmt| stmt.operands().into_iter().map(|Operand(place)| place)))
+            .collect();
+        let mut statements = self.statements.borrow_mut();
+        for place in places_newly_dropped {
+            let drop_statement = Statement::Drop(Operand(place));
+            if places_used.contains(&place) {
+                statements.push_back(drop_statement);
+            }
+            else {
+                statements.push_front(drop_statement);
+            }
+        }
+        match &*self.terminator.borrow() {
+            Terminator::Goto(seq) => seq.yield_dropping(&places_dropped_later),
+            Terminator::IfElse { cond: _, then, otherwise} => {
+                then.yield_dropping(&places_dropped_later);
+                otherwise.yield_dropping(&places_dropped_later);
+            }
+            Terminator::Return(_) => { }
+        }
+    }
+    //set_places_used_laterの後で呼ばれる必要がある
+    fn insert_dropping(&self) {
+        let mut new_statements = LinkedList::new();
+        let mut places_used_later = self.places_used_later.borrow().as_ref().unwrap().clone();
+        places_used_later.extend(self.terminator.borrow().operands().into_iter().map(|Operand(place)| place));
+        let mut statements = self.statements.borrow_mut();
+        let mut places_dropped = HashSet::new();
+        while let Some(statement) = statements.pop_back() {
+            for place in statement.places() {
+                if !places_used_later.contains(&place) {
+                    places_dropped.insert(place);
+                    new_statements.push_front(Statement::Drop(Operand(place)));
+                }
+            }
+            let places_used = statement.operands().into_iter().map(|Operand(place)| place);
+            let statement = match statement {
+                Statement::CopyBinding { from: Operand(from), to }
+                    if places_used_later.contains(&from) => Statement::MoveBinding { from: Operand(from), to },
+                Statement::CopyAssign { from: Operand(from), to }
+                    if places_used_later.contains(&from) => Statement::MoveAssign { from: Operand(from), to },
+                statement => statement
+            };
+            new_statements.push_front(statement);
+            places_used_later.extend(places_used);
+        }
+        *statements = new_statements;
+        *self.places_dropped.borrow_mut() = Some(places_dropped);
+    }
+    //selfを含む、selfに繋がっている全てのSeqBlockを返す
+    pub fn decendants(&'blk self) -> HashSet<&'blk SeqBlock<'blk>> {
+        let mut descendants = HashSet::new();
+        let mut queue = LinkedList::new();
+        queue.push_back(self);
+        while let Some(block) = queue.pop_front() {
+            if descendants.insert(block) {
+                match &*block.terminator.borrow() {
+                    Terminator::Goto(seq) => {
+                        queue.push_back(seq);
+                    }
+                    Terminator::IfElse { cond: _, then, otherwise } => {
+                        queue.push_back(then);
+                        queue.push_back(otherwise);
+                    }
+                    Terminator::Return(_) => { }
+                }
+            }
+        }
+        descendants
+    }
+}
+//アドレス同士の浅い比較を行う
+impl<'blk> PartialEq for &'blk SeqBlock<'blk> {
+    fn eq(&self, other: &Self) -> bool {
+        std::ptr::eq(*self, *other)
+    }
+}
+impl<'blk> Eq for &'blk SeqBlock<'blk> {}
+impl<'blk> hash::Hash for &'blk SeqBlock<'blk> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        std::ptr::hash(*self, state);
     }
 }
 
@@ -184,17 +366,14 @@ pub(crate) enum UnaryOperator {
 /// プログラムのエントリーポイントを表現する構造体
 /// 
 /// 以下の情報を保持します：
-/// - 各メモリ位置の型情報
+/// - スタックの情報
 /// - 実行される文の列
-/// - 定数値の情報
-#[derive(Clone, PartialEq)]
-pub(crate) struct EntryPoint {
-    pub(crate) types: HashMap<Place, Type>,
-    pub(crate) seq: SequentialExecution,
-    pub(crate) is_const: HashMap<Place, bool>
+pub(crate) struct EntryPoint<'blk> {
+    pub(crate) stack_env: StackEnv,
+    pub(crate) seq_front: &'blk SeqBlock<'blk>,
+    pub(crate) seq_backs: LinkedList<&'blk SeqBlock<'blk>>
 }
-
-impl EntryPoint {
+impl<'blk> EntryPoint<'blk> {
     /// メモリ操作を最適化するメソッド
     /// 
     /// 以下の最適化を行います：
@@ -202,37 +381,23 @@ impl EntryPoint {
     /// 2. 最後の使用時のCopy操作をMove操作に変換
     /// 3. 変数の使用回数を追跡し、適切なタイミングでの解放を保証
     pub fn optimize_memory_operations(&mut self) {
-        let mut place_read_counts: HashMap<Place, usize> = HashMap::new();
-        let mut new_statements = LinkedList::new();
-        while let Some(statement) = self.seq.statements.pop_back() {
-            let places = statement.places();
-            for place in places {
-                if place_read_counts.get(&place).copied().unwrap_or(0) == 0 {
-                    new_statements.push_front(Statement::Drop(Operand(place)));
-                }
-            }
-            let operands = statement.operands();
-            new_statements.push_front(match statement {
-                Statement::CopyBinding { from: Operand(from), to }
-                    if place_read_counts.get(&from).copied().unwrap_or(0) == 0 =>
-                    Statement::MoveBinding { from: Operand(from), to },
-                Statement::CopyAssign { from: Operand(from), to }
-                    if place_read_counts.get(&from).copied().unwrap_or(0) == 0 =>
-                    Statement::MoveAssign { from: Operand(from), to },
-                statement => statement
-            });
-            for Operand(place) in operands {
-                *place_read_counts.entry(place).or_insert(0) += 1;
-            }
+        for &back in &self.seq_backs {
+            back.set_places_used_later(& HashSet::new());
         }
-        self.seq.statements = new_statements;
+        let places = self.seq_front.places_used_later.borrow().as_ref().unwrap().clone();
+        self.seq_front.yield_dropping(&places);
     }
 }
-impl fmt::Debug for EntryPoint {
+#[derive(Clone, PartialEq, Debug)]
+pub(crate) struct StackEnv {
+    pub(crate) types: HashMap<Place, Type>,
+    pub(crate) is_const: HashMap<Place, bool>,
+}
+
+impl<'blk> fmt::Debug for EntryPoint<'blk> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "types: {:?}\n", self.types)?;
-        write!(f, "is_const: {:?}\n", self.is_const)?;
-        write!(f, "seq: {:?}\n", self.seq)?;
+        write!(f, "stack_env: {:?}\n", self.stack_env)?;
+        write!(f, "seq: {:?}\n", self.seq_front)?;
         Ok(())
     }
 }

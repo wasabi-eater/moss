@@ -114,6 +114,44 @@ parser! {
     }
 }
 
+parser! {
+    fn if_expr[Input]()(Input) -> Expression
+    where [Input: Stream]
+    {
+        (
+            token(TokenKind::If).skip(token(TokenKind::NewLine)),
+            expression().skip(token(TokenKind::NewLine)),
+            block().map_spanned(ExpressionKind::block),
+            many(attempt((
+                optional(token(TokenKind::NewLine)),
+                token(TokenKind::Else).skip(token(TokenKind::NewLine)),
+                token(TokenKind::If).skip(token(TokenKind::NewLine)),
+                expression().skip(token(TokenKind::NewLine)),
+                block().map_spanned(ExpressionKind::block),
+            ))),
+            optional(attempt((
+                optional(token(TokenKind::NewLine)),
+                token(TokenKind::Else).skip(token(TokenKind::NewLine)),
+                block().map_spanned(ExpressionKind::block),
+            ))),
+        )
+        .map(|(if_token, cond, then, else_ifs, else_):
+            (Token, Expression, Expression,
+                Vec<(Option<Token>, Token, Token, Expression, Expression)>,
+                Option<(Option<Token>, Token, Expression)>)| {
+            let else_ = else_.map(|(_, _, expr)| expr);
+            let else_ =
+                else_ifs.into_iter().rev()
+                .fold(else_, |acc, (_, else_token, _, cond, then)| {
+                    let span = connect_spans(else_token.span, acc.as_ref().map(|acc| acc.span).unwrap_or(then.span));
+                    Some(Spanned::new(ExpressionKind::if_(cond, then, acc), span))
+                });
+           let span = connect_spans(if_token.span, else_.as_ref().map(|else_| else_.span).unwrap_or(then.span));
+           Spanned::new(ExpressionKind::if_(cond, then, else_), span)
+        })
+    }
+}
+
 // Term parser
 parser! {
     fn term[Input]()(Input) -> Expression
@@ -127,6 +165,7 @@ parser! {
             string_literal(),
             block().map_spanned(ExpressionKind::block),
             parentheses(),
+            if_expr(),
         ))
     }
 }

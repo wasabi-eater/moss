@@ -1,4 +1,4 @@
-use crate::span::{Span, Spanned};
+use crate::span::Span;
 use crate::thir;
 use crate::types::{Type, TypeVar, VarMaker};
 use crate::hir;
@@ -266,6 +266,20 @@ impl Infer {
                     type_: ty
                 }
             },
+            hir::ExpressionKind::If { cond, then, otherwise } => {
+                let cond = self.infer(cond);
+                let then = self.infer(then);
+                let otherwise = otherwise.as_ref().map(|otherwise| self.infer(otherwise));
+                let ty = then.type_.clone();
+                if let Some(otherwise) = otherwise.as_ref() {
+                    self.unify(otherwise.type_.clone(), ty.clone(), span);
+                }
+                thir::Expression {
+                    kind: thir::ExpressionKind::If { cond: Box::new(cond), then: Box::new(then), otherwise: otherwise.map(|otherwise| Box::new(otherwise)) },
+                    type_: ty,
+                    span
+                }
+            }
         }
     }
 }
@@ -273,7 +287,7 @@ impl Infer {
 
 #[cfg(test)]
 mod tests {
-    use crate::span::Span;
+    use crate::span::{Span, Spanned};
 
     use crate::{hir::{self, Expression as HirExpression, ExpressionKind as HirExpressionKind, Literal as HirLiteral}, thir};
 

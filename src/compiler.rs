@@ -1,5 +1,6 @@
 use combine::parser::Parser;
 use combine::EasyParser;
+use typed_arena::Arena;
 use crate::infer;
 use crate::parser;
 use crate::mir_to_cpp;
@@ -74,10 +75,11 @@ pub fn compile_to_cpp(source: &str) -> Result<String, Vec<Error>> {
     if infer.has_errors() {
         return Err(infer.errors);
     }
-    let mut mir = mir::Maker::entry_point(thir_expr);
+    let block_arena = Arena::new();
+    let mut mir = mir::Maker::entry_point(thir_expr,&block_arena);
     mir.optimize_memory_operations();
     //println!("{:?}", mir);
-    let mut mir_to_cpp_converter = mir_to_cpp::MirToCppConverter::new(mir.types.clone());
+    let mut mir_to_cpp_converter = mir_to_cpp::MirToCppConverter::new(mir.stack_env.types.clone());
     let cpp = mir_to_cpp_converter.convert(mir);
     //println!("{}", cpp);
     Ok(cpp)

@@ -23,7 +23,8 @@ pub enum ExpressionKind {
     Block(Vec<Expression>),
     Assignment(Spanned<Rc<str>>, Box<Expression>),
     Let(Spanned<Rc<str>>, Box<Expression>),
-    Var(Spanned<Rc<str>>, Box<Expression>)
+    Var(Spanned<Rc<str>>, Box<Expression>),
+    If(Box<Expression>, Box<Expression>, Option<Box<Expression>>),
 }
 pub type Expression = Spanned<ExpressionKind>;
 impl ExpressionKind {
@@ -63,6 +64,9 @@ impl ExpressionKind {
     pub(crate) fn var(name: Spanned<Rc<str>>, expr: Expression) -> Self {
         ExpressionKind::Var(name, Box::new(expr))
     }
+    pub(crate) fn if_(cond: Expression, then: Expression, otherwise: Option<Expression>) -> Self {
+        ExpressionKind::If(Box::new(cond), Box::new(then), otherwise.map(Box::new))
+    }
 }
 
 impl fmt::Debug for ExpressionKind {
@@ -80,6 +84,7 @@ impl fmt::Debug for ExpressionKind {
             ExpressionKind::Assignment(name, expr) => write!(f, "{:?} = {:?}", name, expr),
             ExpressionKind::Let(name, expr) => write!(f, "let {:?} = {:?}", name, expr),
             ExpressionKind::Var(name, expr) => write!(f, "var {:?} = {:?}", name, expr),
+            ExpressionKind::If(cond, then, otherwise) => write!(f, "if {:?} then {:?} else {:?}", cond, then, otherwise),
         }
     }
 }

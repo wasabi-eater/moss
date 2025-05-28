@@ -1,24 +1,28 @@
-use crate::mir::{BinaryOperator, EntryPoint, Literal, Operand, Place, Rvalue, Statement, UnaryOperator};
+use crate::mir::{BinaryOperator, EntryPoint, Literal, Operand, Place, Rvalue, SeqBlock, Statement, Terminator, UnaryOperator};
 use crate::types::{Type, PrimitiveType};
-use std::collections::HashMap;
-use itertools::Itertools;
-pub(crate)  struct MirToCppConverter {
+use std::collections::{HashMap, LinkedList};
+pub(crate)  struct MirToCppConverter<'blk> {
     cpp_code: String,
     types: HashMap<Place, Type>,
+    block_labels: HashMap<&'blk SeqBlock<'blk>, String>,
 }
 
-impl MirToCppConverter {
+impl<'blk> MirToCppConverter<'blk> {
     pub fn new(types: HashMap<Place, Type>) -> Self {
         Self {
             cpp_code: String::new(),
-            types
+            types,
+            block_labels: HashMap::new(),
         }
     }
 
-    pub fn convert(&mut self, entry_point: EntryPoint) -> String {
+    pub fn convert(&mut self, entry_point: EntryPoint<'blk>) -> String {
+        let blocks = entry_point.seq_front.decendants();
         self.header();
         self.cpp_code.push_str("int main() {\n");
-        self.convert_statements(&entry_point.seq.statements.into_iter().collect_vec());
+        for block in blocks {
+            self.convert_seqblock(block);
+        }
         self.cpp_code.push_str("    return 0;\n");
         self.cpp_code.push_str("}\n");
         self.cpp_code.clone()
@@ -31,9 +35,41 @@ class Unit {};
 "##;
     }
 
-    fn convert_statements(&mut self, statements: &[Statement]) {
+    fn label_of(&mut self, seq_block: &'blk SeqBlock<'blk>) -> String {
+        let label_len = self.block_labels.len();
+        self.block_labels.entry(seq_block).or_insert_with(|| {
+            format!("block_{}", label_len)
+        }).clone()
+    }
+
+    fn convert_seqblock(&mut self, seq_block: &'blk SeqBlock<'blk>) {
+        let label = self.label_of(seq_block);
+        self.cpp_code.push_str(&format!("{}:\n", label));
+        self.convert_statements(&*seq_block.statements.borrow());
+        self.convert_terminator(&*seq_block.terminator.borrow());
+    }
+
+    fn convert_statements(&mut self, statements: &LinkedList<Statement>) {
         for statement in statements {
             self.convert_statement(statement);
+        }
+    }
+
+    fn convert_terminator(&mut self, terminator: &Terminator<'blk>) {
+        match terminator {
+            Terminator::Return(operand) => {
+                self.cpp_code.push_str(format!("    return {};\n", self.convert_operand(operand)).as_str());
+            }
+            Terminator::Goto(block) => {
+                let label = self.label_of(*block);
+                self.cpp_code.push_str(&format!("    goto {};\n", label));
+            }
+            Terminator::IfElse { cond, then, otherwise } => {
+                let cond_str = self.convert_operand(cond);
+                let then_label = self.label_of(*then);
+                let otherwise_label = self.label_of(*otherwise);
+                self.cpp_code.push_str(&format!("    if ({}) goto {};\nelse goto {};", cond_str, then_label, otherwise_label));
+            }
         }
     }
 

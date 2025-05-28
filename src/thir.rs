@@ -38,7 +38,12 @@ pub(crate) enum ExpressionKind {
         value: Box<Expression>,
         scope: Box<Expression>
     },
-    Literal(Literal)
+    Literal(Literal),
+    If {
+        cond: Box<Expression>,
+        then: Box<Expression>,
+        otherwise: Option<Box<Expression>>
+    }
 }
 impl fmt::Debug for Expression {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -50,6 +55,7 @@ impl fmt::Debug for Expression {
             ExpressionKind::Block { statements } => write!(f, "{{ {} }}", statements.iter().map(|s| format!("{:?}", s)).join("; ")),
             ExpressionKind::DeclareVar { is_const, name, value, scope } => write!(f, "{} Symbol({}) = {:?} in {:?}: {:?}", if *is_const { "let" } else { "var" }, name.inner.get_id(), value, scope, self.type_),
             ExpressionKind::Literal(literal) => write!(f, "{:?}", literal),
+            ExpressionKind::If { cond, then, otherwise } => write!(f, "if {:?} then {:?} else {:?}", cond, then, otherwise),
         }
     }
 }

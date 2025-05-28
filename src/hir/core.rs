@@ -39,6 +39,11 @@ pub enum ExpressionKind {
         name: Spanned<Symbol>,
         value: Box<Expression>,
         scope: Box<Expression>
+    },
+    If {
+        cond: Box<Expression>,
+        then: Box<Expression>,
+        otherwise: Option<Box<Expression>>
     }
 }
 impl fmt::Debug for Expression {
@@ -56,6 +61,7 @@ impl fmt::Debug for ExpressionKind {
             ExpressionKind::Assignment { name, value } => write!(f, "{:?} = {:?}", name, value),
             ExpressionKind::Block { statements } => write!(f, "{{ {} }}", statements.iter().map(|s| format!("{:?}", s)).join("; ")),
             ExpressionKind::DeclareVar { is_const, name, value, scope } => write!(f, "{} {:?} = {:?} in {:?}", if *is_const { "let" } else { "var" }, name, value, scope),
+            ExpressionKind::If { cond, then, otherwise } => write!(f, "if {:?} then {:?} else {:?}", cond, then, otherwise),
         }
     }
 }

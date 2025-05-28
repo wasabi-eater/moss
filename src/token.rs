@@ -21,6 +21,12 @@ pub enum TokenKind {
     
     #[token("var")]
     Var,
+
+    #[token("if")]
+    If,
+
+    #[token("else")]
+    Else,
     
     #[token("true", |_| true)]
     #[token("false", |_| false)]
@@ -142,6 +148,8 @@ impl fmt::Display for TokenKind {
             TokenKind::LessEqual => write!(f, "<="),
             TokenKind::GreaterEqual => write!(f, ">="),
             TokenKind::NewLine => write!(f, "\n"),
+            TokenKind::If => write!(f, "if"),
+            TokenKind::Else => write!(f, "else"),
         }
     }
 }

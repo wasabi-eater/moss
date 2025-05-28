@@ -93,6 +93,12 @@ impl Maker {
             span
         })
     }
+    pub fn if_(&mut self, cond: Expression, then: Expression, otherwise: Option<Expression>, span: Span) -> Result<Expression, Error> {
+        Ok(Expression {
+            kind: ExpressionKind::If { cond: Box::new(cond), then: Box::new(then), otherwise: otherwise.map(Box::new) },
+            span
+        })
+    }
     pub(crate) fn from_ast_expr(&mut self, ast: &AstExpression) -> Result<Expression, Error> {
         match &ast.inner {
             AstExpressionKind::BinaryOperation(left, op, right) => {
@@ -172,6 +178,12 @@ impl Maker {
             },
             AstExpressionKind::Let(_, _) | AstExpressionKind::Var(_, _) => {
                 panic!("Let/Var expressions should be handled in Block")
+            },
+            AstExpressionKind::If(cond, then, otherwise) => {
+                let cond = self.from_ast_expr(cond)?;
+                let then = self.from_ast_expr(then)?;
+                let otherwise = otherwise.as_ref().map(|otherwise| self.from_ast_expr(otherwise)).transpose()?;
+                self.if_(cond, then, otherwise, ast.span)
             },
         }
     }
