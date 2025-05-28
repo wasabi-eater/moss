@@ -652,4 +652,120 @@ mod tests {
         };
         assert_eq!(num.as_ref(), "1");
     }
+
+    #[test]
+    fn test_if_expression_simple() {
+        // if x { 1 }
+        let tokens = vec![
+            Token::new(TokenKind::If, Span::with_lc(1, 1, 1, 3)),
+            Token::new(TokenKind::NewLine, Span::with_lc(1, 3, 2, 1)),
+            Token::new(TokenKind::Identifier(Rc::from("x")), Span::with_lc(2, 1, 2, 2)),
+            Token::new(TokenKind::NewLine, Span::with_lc(2, 2, 3, 1)),
+            Token::new(TokenKind::LeftBrace, Span::with_lc(3, 1, 3, 2)),
+            Token::new(TokenKind::IntLiteral(Rc::from("1")), Span::with_lc(3, 2, 3, 3)),
+            Token::new(TokenKind::RightBrace, Span::with_lc(3, 3, 3, 4)),
+        ];
+        let result = expr().easy_parse(tokens.as_ref());
+        let ExpressionKind::If(cond, then, else_) = &result.unwrap().0.inner else {
+            panic!("Expected if expression");
+        };
+        assert_eq!(cond.inner, ExpressionKind::variable("x"));
+        let ExpressionKind::Block(ref stmts) = then.inner else {
+            panic!("Expected block in then");
+        };
+        assert_eq!(stmts.len(), 1);
+        assert_eq!(stmts[0].inner, ExpressionKind::int("1"));
+        assert!(else_.is_none());
+    }
+
+    #[test]
+    fn test_if_else_expression() {
+        // if x { 1 } else { 2 }
+        let tokens = vec![
+            Token::new(TokenKind::If, Span::with_lc(1, 1, 1, 3)),
+            Token::new(TokenKind::NewLine, Span::with_lc(1, 3, 2, 1)),
+            Token::new(TokenKind::Identifier(Rc::from("x")), Span::with_lc(2, 1, 2, 2)),
+            Token::new(TokenKind::NewLine, Span::with_lc(2, 2, 3, 1)),
+            Token::new(TokenKind::LeftBrace, Span::with_lc(3, 1, 3, 2)),
+            Token::new(TokenKind::IntLiteral(Rc::from("1")), Span::with_lc(3, 2, 3, 3)),
+            Token::new(TokenKind::RightBrace, Span::with_lc(3, 3, 3, 4)),
+            Token::new(TokenKind::Else, Span::with_lc(3, 5, 3, 9)),
+            Token::new(TokenKind::NewLine, Span::with_lc(3, 9, 4, 1)),
+            Token::new(TokenKind::LeftBrace, Span::with_lc(4, 1, 4, 2)),
+            Token::new(TokenKind::IntLiteral(Rc::from("2")), Span::with_lc(4, 2, 4, 3)),
+            Token::new(TokenKind::RightBrace, Span::with_lc(4, 3, 4, 4)),
+        ];
+        let result = expr().easy_parse(tokens.as_ref());
+        let ExpressionKind::If(cond, then, else_) = &result.unwrap().0.inner else {
+            panic!("Expected if expression");
+        };
+        assert_eq!(cond.inner, ExpressionKind::variable("x"));
+        let ExpressionKind::Block(ref stmts) = then.inner else {
+            panic!("Expected block in then");
+        };
+        assert_eq!(stmts.len(), 1);
+        assert_eq!(stmts[0].inner, ExpressionKind::int("1"));
+        let Some(else_expr) = else_ else { panic!("Expected else branch"); };
+        let ExpressionKind::Block(ref stmts) = else_expr.inner else {
+            panic!("Expected block in else");
+        };
+        assert_eq!(stmts.len(), 1);
+        assert_eq!(stmts[0].inner, ExpressionKind::int("2"));
+    }
+
+    #[test]
+    fn test_if_elseif_else_expression() {
+        // if x { 1 } else if y { 2 } else { 3 }
+        let tokens = vec![
+            Token::new(TokenKind::If, Span::with_lc(1, 1, 1, 3)),
+            Token::new(TokenKind::NewLine, Span::with_lc(1, 3, 2, 1)),
+            Token::new(TokenKind::Identifier(Rc::from("x")), Span::with_lc(2, 1, 2, 2)),
+            Token::new(TokenKind::NewLine, Span::with_lc(2, 2, 3, 1)),
+            Token::new(TokenKind::LeftBrace, Span::with_lc(3, 1, 3, 2)),
+            Token::new(TokenKind::IntLiteral(Rc::from("1")), Span::with_lc(3, 2, 3, 3)),
+            Token::new(TokenKind::RightBrace, Span::with_lc(3, 3, 3, 4)),
+            Token::new(TokenKind::Else, Span::with_lc(3, 5, 3, 9)),
+            Token::new(TokenKind::NewLine, Span::with_lc(3, 9, 4, 1)),
+            Token::new(TokenKind::If, Span::with_lc(4, 1, 4, 3)),
+            Token::new(TokenKind::NewLine, Span::with_lc(4, 3, 5, 1)),
+            Token::new(TokenKind::Identifier(Rc::from("y")), Span::with_lc(5, 1, 5, 2)),
+            Token::new(TokenKind::NewLine, Span::with_lc(5, 2, 6, 1)),
+            Token::new(TokenKind::LeftBrace, Span::with_lc(6, 1, 6, 2)),
+            Token::new(TokenKind::IntLiteral(Rc::from("2")), Span::with_lc(6, 2, 6, 3)),
+            Token::new(TokenKind::RightBrace, Span::with_lc(6, 3, 6, 4)),
+            Token::new(TokenKind::Else, Span::with_lc(6, 5, 6, 9)),
+            Token::new(TokenKind::NewLine, Span::with_lc(6, 9, 7, 1)),
+            Token::new(TokenKind::LeftBrace, Span::with_lc(7, 1, 7, 2)),
+            Token::new(TokenKind::IntLiteral(Rc::from("3")), Span::with_lc(7, 2, 7, 3)),
+            Token::new(TokenKind::RightBrace, Span::with_lc(7, 3, 7, 4)),
+        ];
+        let result = expr().easy_parse(tokens.as_ref());
+        let ExpressionKind::If(cond, then, else_) = &result.unwrap().0.inner else {
+            panic!("Expected if expression");
+        };
+        assert_eq!(cond.inner, ExpressionKind::variable("x"));
+        let ExpressionKind::Block(ref stmts) = then.inner else {
+            panic!("Expected block in then");
+        };
+        assert_eq!(stmts.len(), 1);
+        assert_eq!(stmts[0].inner, ExpressionKind::int("1"));
+
+        let Some(else_expr) = else_ else { panic!("Expected else branch"); };
+        let ExpressionKind::If(cond, then, else_) = &else_expr.inner else {
+            panic!("Expected else-if expression");
+        };
+        assert_eq!(cond.inner, ExpressionKind::variable("y"));
+        let ExpressionKind::Block(ref stmts) = then.inner else {
+            panic!("Expected block in else-if then");
+        };
+        assert_eq!(stmts.len(), 1);
+        assert_eq!(stmts[0].inner, ExpressionKind::int("2"));
+
+        let Some(else_expr2) = else_ else { panic!("Expected else branch after else-if"); };
+        let ExpressionKind::Block(ref stmts) = else_expr2.inner else {
+            panic!("Expected block in else after else-if");
+        };
+        assert_eq!(stmts.len(), 1);
+        assert_eq!(stmts[0].inner, ExpressionKind::int("3"));
+    }
 }
