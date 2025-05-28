@@ -3,7 +3,7 @@ use std::fmt;
 use itertools::Itertools;
 
 use crate::{span::{Span, Spanned}, hir::{BinaryOperator, UnaryOperator}, types::Type};
-use crate::symbol::{Symbol, SymbolArena};
+use crate::symbol::Symbol;
 
 #[derive(PartialEq)]
 pub(crate) struct Expression {
