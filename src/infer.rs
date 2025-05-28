@@ -271,13 +271,20 @@ impl Infer {
                 let then = self.infer(then);
                 let otherwise = otherwise.as_ref().map(|otherwise| self.infer(otherwise));
                 let ty = then.type_.clone();
-                if let Some(otherwise) = otherwise.as_ref() {
-                    self.unify(otherwise.type_.clone(), ty.clone(), span);
+                if let Some(otherwise) = otherwise {
+                    self.unify(otherwise.type_.clone(), ty.clone(), span);    
+                    thir::Expression {
+                        kind: thir::ExpressionKind::If { cond: Box::new(cond), then: Box::new(then), otherwise: Some(Box::new(otherwise)) },
+                        type_: ty,
+                        span
+                    }
                 }
-                thir::Expression {
-                    kind: thir::ExpressionKind::If { cond: Box::new(cond), then: Box::new(then), otherwise: otherwise.map(|otherwise| Box::new(otherwise)) },
-                    type_: ty,
-                    span
+                else {
+                    thir::Expression {
+                        kind: thir::ExpressionKind::If { cond: Box::new(cond), then: Box::new(then), otherwise: None },
+                        type_: Type::unit(),
+                        span
+                    }
                 }
             }
         }
@@ -506,5 +513,100 @@ mod tests {
         let error_messages = infer.errors.iter().map(|e| e.message(&hir_maker.symbol_arena)).collect_vec();
         assert_eq!(error_messages.len(), 1);
         assert!(error_messages[0].contains("無効な二項演算"));
+    }
+    #[test]
+    fn test_infer_if_expression_with_else() {
+        let span = Span::default();
+        let mut hir_maker = hir::Maker::new();
+
+        let cond = hir_maker.bool_literal(true, span).unwrap();
+        let then_branch = hir_maker.int_literal("1", span).unwrap();
+        let else_branch = hir_maker.int_literal("2", span).unwrap();
+
+        let expr = hir_maker.if_(cond.clone(), then_branch.clone(), Some(else_branch.clone()), span).unwrap();
+
+        let mut infer = Infer::new(Env::new());
+        let thir_expr = infer.infer(&expr);
+
+        assert_eq!(
+            thir_expr,
+            thir::Expression {
+                kind: thir::ExpressionKind::If {
+                    cond: Box::new(thir::Expression {
+                        kind: thir::ExpressionKind::Literal(thir::Literal::Bool(true)),
+                        type_: Type::bool(),
+                        span,
+                    }),
+                    then: Box::new(thir::Expression {
+                        kind: thir::ExpressionKind::Literal(thir::Literal::Int("1".into())),
+                        type_: Type::int(),
+                        span,
+                    }),
+                    otherwise: Some(Box::new(thir::Expression {
+                        kind: thir::ExpressionKind::Literal(thir::Literal::Int("2".into())),
+                        type_: Type::int(),
+                        span,
+                    })),
+                },
+                type_: Type::int(),
+                span,
+            }
+        );
+        assert!(infer.errors.is_empty());
+    }
+
+    #[test]
+    fn test_infer_if_expression_without_else() {
+        let span = Span::default();
+        let mut hir_maker = hir::Maker::new();
+
+        let cond = hir_maker.bool_literal(false, span).unwrap();
+        let then_branch = hir_maker.string_literal(Rc::from("then"), span).unwrap();
+
+        let expr = hir_maker.if_(cond.clone(), then_branch.clone(), None, span).unwrap();
+
+        let mut infer = Infer::new(Env::new());
+        let thir_expr = infer.infer(&expr);
+
+        assert_eq!(
+            thir_expr,
+            thir::Expression {
+                kind: thir::ExpressionKind::If {
+                    cond: Box::new(thir::Expression {
+                        kind: thir::ExpressionKind::Literal(thir::Literal::Bool(false)),
+                        type_: Type::bool(),
+                        span,
+                    }),
+                    then: Box::new(thir::Expression {
+                        kind: thir::ExpressionKind::Literal(thir::Literal::String("then".into())),
+                        type_: Type::string(),
+                        span,
+                    }),
+                    otherwise: None,
+                },
+                type_: Type::unit(),
+                span,
+            }
+        );
+        assert!(infer.errors.is_empty());
+    }
+
+    #[test]
+    fn test_infer_if_expression_type_mismatch_error() {
+        let span = Span::default();
+        let mut hir_maker = hir::Maker::new();
+
+        let cond = hir_maker.bool_literal(true, span).unwrap();
+        let then_branch = hir_maker.int_literal("1", span).unwrap();
+        let else_branch = hir_maker.string_literal(Rc::from("else"), span).unwrap();
+
+        let expr = hir_maker.if_(cond.clone(), then_branch.clone(), Some(else_branch.clone()), span).unwrap();
+
+        let mut infer = Infer::new(Env::new());
+        let (_result, errors) = infer.infer_with_errors(&expr);
+
+        assert_eq!(errors.len(), 1);
+        let error_messages = infer.errors.iter().map(|e| e.message(&hir_maker.symbol_arena)).collect_vec();
+        assert!(error_messages[0].contains("型が一致しません") || error_messages[0].contains("型"));
     }
 }
