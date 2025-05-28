@@ -1,10 +1,8 @@
 use core::fmt;
-use std::cell::{OnceCell, RefCell};
+use std::cell::RefCell;
 use std::hash;
 use std::rc::Rc;
 use std::collections::{HashMap, HashSet, LinkedList};
-use combine::stream::state;
-use itertools::Itertools;
 use literally::hset;
 use crate::types::Type;
 /// リテラル値を表現する列挙型
