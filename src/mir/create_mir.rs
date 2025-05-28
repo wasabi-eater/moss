@@ -254,7 +254,6 @@ mod tests {
         let mut place_maker = PlaceMaker::new();
         let place = place_maker.make();
         expected_statements.push_back(Statement::Expr(Rvalue::Literal(place, Literal::Int("42".into()))));
-        expected_statements.push_back(Statement::Drop(Operand(place)));
 
         assert_eq!(&*entry_point.seq_front.statements.borrow(), &expected_statements);
         let Terminator::Return(Operand(place2)) = &*entry_point.seq_front.terminator.borrow() else {
@@ -303,7 +302,6 @@ mod tests {
             BinaryOperator::Add(Type::int(), Type::int()),
             Operand(right_place)
         )));
-        expected.push_back(Statement::Drop(Operand(result_place)));
 
         assert_eq!(&*entry_point.seq_front.statements.borrow(), &expected);
 
@@ -351,7 +349,6 @@ mod tests {
 
         expected.push_back(Statement::Expr(Rvalue::Literal(var_place, Literal::Int("100".into()))));
         expected.push_back(Statement::CopyBinding { from: Operand(var_place), to: result_place });
-        expected.push_back(Statement::Drop(Operand(result_place)));
 
         assert_eq!(&*entry_point.seq_front.statements.borrow(), &expected);
         let stack_env = entry_point.stack_env;
