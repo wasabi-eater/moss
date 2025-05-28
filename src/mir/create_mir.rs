@@ -1,6 +1,6 @@
-use std::{cell::RefCell, collections::{HashMap, LinkedList}};
+use std::collections::{HashMap, LinkedList};
 use crate::{
-    hir, span::Spanned, symbol::Symbol, thir::{Expression, ExpressionKind, Literal as ThirLiteral}, types::Type
+    hir, symbol::Symbol, thir::{Expression, ExpressionKind, Literal as ThirLiteral}, types::Type
 };
 use super::core::*;
 use literally::list;
