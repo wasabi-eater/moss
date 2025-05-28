@@ -120,10 +120,7 @@ impl Maker {
                 });
                 let left = self.from_ast_expr(left)?;
                 let right = self.from_ast_expr(right)?; 
-                Ok(Expression { 
-                    kind: ExpressionKind::BinaryOp { op, left: Box::new(left), right: Box::new(right) },
-                    span: ast.span,
-                })
+                self.binary_op(op, left, right, ast.span)
             },
             AstExpressionKind::Block(statements) => {
                 let declarings = statements.iter().enumerate()
