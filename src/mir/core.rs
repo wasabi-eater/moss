@@ -2,7 +2,7 @@ use core::fmt;
 use std::cell::RefCell;
 use std::hash;
 use std::rc::Rc;
-use std::collections::{HashMap, HashSet, LinkedList};
+use std::collections::{HashMap, HashSet, LinkedList, VecDeque};
 use literally::hset;
 use crate::types::Type;
 /// リテラル値を表現する列挙型
@@ -176,7 +176,7 @@ impl<'blk> Terminator<'blk> {
 /// 文の列を保持し、プログラムの実行順序を表現します。
 pub(crate) struct SeqBlock<'blk> {
     pub(crate) preblocks: RefCell<HashSet<&'blk SeqBlock<'blk>>>,
-    pub(crate) statements: RefCell<LinkedList<Statement>>,
+    pub(crate) statements: RefCell<VecDeque<Statement>>,
     pub(crate) terminator: RefCell<Terminator<'blk>>,
     places_used_later: RefCell<Option<HashSet<Place>>>,
     places_dropped: RefCell<Option<HashSet<Place>>>,
@@ -193,7 +193,7 @@ impl<'blk> fmt::Debug for SeqBlock<'blk> {
     }
 }
 impl<'blk> SeqBlock<'blk> {
-    pub(crate) fn new(statements: LinkedList<Statement>, terminator: Terminator<'blk>) -> Self {
+    pub(crate) fn new(statements: VecDeque<Statement>, terminator: Terminator<'blk>) -> Self {
         let places_used =
             terminator.operands().into_iter()
             .chain(statements.iter().flat_map(|statement| statement.operands()))
@@ -275,7 +275,7 @@ impl<'blk> SeqBlock<'blk> {
     }
     //set_places_used_laterの後で呼ばれる必要がある
     fn insert_dropping(&self) {
-        let mut new_statements = LinkedList::new();
+        let mut new_statements = VecDeque::new();
         let mut places_used_later = self.places_used_later.borrow().as_ref().unwrap().clone();
         places_used_later.extend(self.terminator.borrow().operands().into_iter().map(|Operand(place)| place));
         let mut statements = self.statements.borrow_mut();
@@ -369,7 +369,7 @@ pub(crate) enum UnaryOperator {
 pub(crate) struct EntryPoint<'blk> {
     pub(crate) stack_env: StackEnv,
     pub(crate) seq_front: &'blk SeqBlock<'blk>,
-    pub(crate) seq_backs: LinkedList<&'blk SeqBlock<'blk>>
+    pub(crate) seq_backs: Vec<&'blk SeqBlock<'blk>>
 }
 impl<'blk> EntryPoint<'blk> {
     /// メモリ操作を最適化するメソッド

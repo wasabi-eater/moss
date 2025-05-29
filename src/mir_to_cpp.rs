@@ -1,6 +1,6 @@
 use crate::mir::{BinaryOperator, EntryPoint, Literal, Operand, Place, Rvalue, SeqBlock, Statement, Terminator, UnaryOperator};
 use crate::types::{Type, PrimitiveType};
-use std::collections::{HashMap, LinkedList};
+use std::collections::{HashMap, VecDeque};
 pub(crate)  struct MirToCppConverter<'blk> {
     cpp_code: String,
     types: HashMap<Place, Type>,
@@ -49,7 +49,7 @@ class Unit {};
         self.convert_terminator(&*seq_block.terminator.borrow());
     }
 
-    fn convert_statements(&mut self, statements: &LinkedList<Statement>) {
+    fn convert_statements(&mut self, statements: &VecDeque<Statement>) {
         for statement in statements {
             self.convert_statement(statement);
         }

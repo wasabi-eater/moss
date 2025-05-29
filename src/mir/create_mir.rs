@@ -1,20 +1,20 @@
-use std::collections::{HashMap, LinkedList};
+use std::collections::{HashMap, VecDeque};
 use crate::{
     hir, symbol::Symbol, thir::{Expression, ExpressionKind, Literal as ThirLiteral}, types::Type
 };
 use super::core::*;
-use literally::list;
+use literally::vecd;
 use typed_arena::Arena;
 
 pub(crate) enum SeqBlockBuilder {
     Statement(Statement),
-    If(Operand, LinkedList<SeqBlockBuilder>, LinkedList<SeqBlockBuilder>),
+    If(Operand, Vec<SeqBlockBuilder>, Vec<SeqBlockBuilder>),
     Return(Operand)
 }
 impl SeqBlockBuilder {
-    fn build_with_terminator<'blk>(mut builder_list: LinkedList<Self>, mut terminator: Terminator<'blk>, arena: &'blk Arena<SeqBlock<'blk>>) -> &'blk SeqBlock<'blk> {
-        let mut statements = LinkedList::new();
-        while let Some(builder) = builder_list.pop_back() {
+    fn build_with_terminator<'blk>(mut builder_list: Vec<Self>, mut terminator: Terminator<'blk>, arena: &'blk Arena<SeqBlock<'blk>>) -> &'blk SeqBlock<'blk> {
+        let mut statements = VecDeque::new();
+        while let Some(builder) = builder_list.pop() {
             match builder {
                 SeqBlockBuilder::Return(operand) => terminator = Terminator::Return(operand),
                 SeqBlockBuilder::If(cond, then, otherwise) => {
@@ -24,7 +24,7 @@ impl SeqBlockBuilder {
                             terminator
                         ));
                         terminator = Terminator::Goto(block);
-                        statements = list![];
+                        statements = vecd![];
                     }
                     let then = SeqBlockBuilder::build_with_terminator(then, terminator.shallow_clone(), arena);
                     let otherwise = SeqBlockBuilder::build_with_terminator(otherwise, terminator, arena);
@@ -58,10 +58,10 @@ impl SeqBlockBuilder {
             }
         }
     }
-    fn get_return_blocks<'blk>(block: &'blk SeqBlock<'blk>) -> LinkedList<&'blk SeqBlock<'blk>> {
+    fn get_return_blocks<'blk>(block: &'blk SeqBlock<'blk>) -> Vec<&'blk SeqBlock<'blk>> {
         match &*block.terminator.borrow() {
             Terminator::Goto(next_block) => Self::get_return_blocks(next_block),
-            Terminator::Return(_) => list![block],
+            Terminator::Return(_) => vec![block],
             Terminator::IfElse { cond: _, then, otherwise } => {
                 let mut return_blocks = Self::get_return_blocks(then);
                 return_blocks.append(&mut Self::get_return_blocks(otherwise));
@@ -103,7 +103,7 @@ impl<'blk> Maker<'blk> {
     }
 
     /// THIRの式をMIRの文の列に変換します
-    fn expr(&mut self, expr: Expression, place: Place) -> LinkedList<SeqBlockBuilder> {
+    fn expr(&mut self, expr: Expression, place: Place) -> Vec<SeqBlockBuilder> {
         self.types.insert(place, expr.type_.clone());
         match expr.kind {
             ExpressionKind::DeclareVar { is_const, name, value, scope } =>
@@ -123,7 +123,7 @@ impl<'blk> Maker<'blk> {
                 self.if_(*cond, *then, otherwise.map(|otherwise| *otherwise), place),
         }
     }
-    fn declare_var(&mut self, name: Symbol, value: Expression, scope: Expression, is_const: bool, place: Place) -> LinkedList<SeqBlockBuilder> {
+    fn declare_var(&mut self, name: Symbol, value: Expression, scope: Expression, is_const: bool, place: Place) -> Vec<SeqBlockBuilder> {
         let var_place = self.place_maker.make();
         let value_type = value.type_.clone();
         let mut blocks = self.expr(value, var_place);
@@ -134,17 +134,17 @@ impl<'blk> Maker<'blk> {
         self.id_place_map.get_mut(&name).expect(&format!("{:?} was lost", name)).pop();
         blocks
     }
-    fn assignment(&mut self, var_name: Symbol, value: Expression, place: Place) -> LinkedList<SeqBlockBuilder> {
+    fn assignment(&mut self, var_name: Symbol, value: Expression, place: Place) -> Vec<SeqBlockBuilder> {
         let tmp_place = self.place_maker.make();
         let var_place = *self.id_place_map.get(&var_name)
             .and_then(|places| places.last())
             .expect("無効なIDです");
         let mut blocks = self.expr(value, tmp_place);
-        blocks.push_back(SeqBlockBuilder::Statement(Statement::CopyAssign { from: Operand(tmp_place), to: var_place }));
-        blocks.push_back(SeqBlockBuilder::Statement(Statement::Expr(Rvalue::Literal(place, Literal::Unit))));
+        blocks.push(SeqBlockBuilder::Statement(Statement::CopyAssign { from: Operand(tmp_place), to: var_place }));
+        blocks.push(SeqBlockBuilder::Statement(Statement::Expr(Rvalue::Literal(place, Literal::Unit))));
         blocks
     }
-    fn binary_op(&mut self, left: Expression, op: hir::BinaryOperator, right: Expression, place: Place) -> LinkedList<SeqBlockBuilder> {
+    fn binary_op(&mut self, left: Expression, op: hir::BinaryOperator, right: Expression, place: Place) -> Vec<SeqBlockBuilder> {
         let left_place = self.place_maker.make();
         let right_place = self.place_maker.make();
         let left_type = left.type_.clone();
@@ -166,12 +166,12 @@ impl<'blk> Maker<'blk> {
             hir::BinaryOperator::Or => BinaryOperator::Or(left_type, right_type),
             hir::BinaryOperator::Xor => BinaryOperator::Xor(left_type, right_type)
         };
-        blocks.push_back(SeqBlockBuilder::Statement(Statement::Expr(Rvalue::BinaryOp(place, Operand(left_place), op, Operand(right_place)))));
+        blocks.push(SeqBlockBuilder::Statement(Statement::Expr(Rvalue::BinaryOp(place, Operand(left_place), op, Operand(right_place)))));
         blocks
     }
-    fn block(&mut self, mut statements: Vec<Expression>, place: Place) -> LinkedList<SeqBlockBuilder> {
+    fn block(&mut self, mut statements: Vec<Expression>, place: Place) -> Vec<SeqBlockBuilder> {
         let Some(last_statement) = statements.pop() else {
-            return list![
+            return vec![
                 SeqBlockBuilder::Statement(Statement::Expr(Rvalue::Literal(place, Literal::Unit)))
             ]
         };
@@ -181,39 +181,39 @@ impl<'blk> Maker<'blk> {
         }
         self.expr(last_statement, place)
     }
-    fn literal(&mut self, lit: ThirLiteral, place: Place) -> LinkedList<SeqBlockBuilder> {
+    fn literal(&mut self, lit: ThirLiteral, place: Place) -> Vec<SeqBlockBuilder> {
         let lit = match lit {
             ThirLiteral::Bool(b) => Literal::Bool(b),
             ThirLiteral::Int(i) => Literal::Int(i),
             ThirLiteral::Float(f) => Literal::Float(f),
             ThirLiteral::String(s) => Literal::String(s),
         };
-        list![SeqBlockBuilder::Statement(Statement::Expr(Rvalue::Literal(place, lit)))]
+        vec![SeqBlockBuilder::Statement(Statement::Expr(Rvalue::Literal(place, lit)))]
     }
-    fn prefix_unary_op(&mut self, op: hir::UnaryOperator, operand: Expression, place: Place) -> LinkedList<SeqBlockBuilder> {
+    fn prefix_unary_op(&mut self, op: hir::UnaryOperator, operand: Expression, place: Place) -> Vec<SeqBlockBuilder> {
         let op = match op {
             hir::UnaryOperator::Minus => UnaryOperator::Minus(operand.type_.clone()),
             hir::UnaryOperator::Not => UnaryOperator::Not(operand.type_.clone())
         };
         let operand_place = self.place_maker.make();
         let mut blocks = self.expr(operand, operand_place);
-        blocks.push_back(SeqBlockBuilder::Statement(Statement::Expr(Rvalue::UnaryOperator(place, op, Operand(operand_place)))));
+        blocks.push(SeqBlockBuilder::Statement(Statement::Expr(Rvalue::UnaryOperator(place, op, Operand(operand_place)))));
         blocks
     }
-    fn variable(&mut self, name: Symbol, place: Place) -> LinkedList<SeqBlockBuilder> {
+    fn variable(&mut self, name: Symbol, place: Place) -> Vec<SeqBlockBuilder> {
         let var_place = *self.id_place_map[&name].last().expect(&format!("Invalid {name:?}"));
-        list![SeqBlockBuilder::Statement(Statement::CopyBinding { from: Operand(var_place), to: place })]
+        vec![SeqBlockBuilder::Statement(Statement::CopyBinding { from: Operand(var_place), to: place })]
     }
-    fn if_(&mut self, cond: Expression, then: Expression, otherwise: Option<Expression>, place: Place) -> LinkedList<SeqBlockBuilder> {
+    fn if_(&mut self, cond: Expression, then: Expression, otherwise: Option<Expression>, place: Place) -> Vec<SeqBlockBuilder> {
         let cond_place = self.place_maker.make();
         let mut blocks = self.expr(cond, cond_place);
 
         let then_blocks = self.expr(then, place);
         let otherwise_blocks = match otherwise {
             Some(otherwise) => self.expr(otherwise, place),
-            None => list![]
+            None => vec![]
         };
-        blocks.push_back(SeqBlockBuilder::If(
+        blocks.push(SeqBlockBuilder::If(
             Operand(cond_place),
             then_blocks,
             otherwise_blocks
@@ -234,8 +234,8 @@ mod tests {
         Span::default()
     }
 
-    fn setup_test() -> (PlaceMaker, LinkedList<Statement>) {
-        (PlaceMaker::new(), LinkedList::new())
+    fn setup_test() -> (PlaceMaker, VecDeque<Statement>) {
+        (PlaceMaker::new(), VecDeque::new())
     }
 
     #[test]
