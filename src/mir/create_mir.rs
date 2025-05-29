@@ -357,4 +357,60 @@ mod tests {
         assert_eq!(types.get(&result_place), Some(&Type::int()));
         assert!(stack_env.is_const.get(&var_place).unwrap());
     }
-} 
+    #[test]
+    fn test_if_expression() {
+        let expr = Expression {
+            kind: ExpressionKind::If {
+                cond: Box::new(Expression {
+                    kind: ExpressionKind::Literal(ThirLiteral::Bool(true)),
+                    span: default_span(),
+                    type_: Type::bool()
+                }),
+                then: Box::new(Expression {
+                    kind: ExpressionKind::Literal(ThirLiteral::Int("1".into())),
+                    span: default_span(),
+                    type_: Type::int()
+                }),
+                otherwise: Some(Box::new(Expression {
+                    kind: ExpressionKind::Literal(ThirLiteral::Int("0".into())),
+                    span: default_span(),
+                    type_: Type::int()
+                }))
+            },
+            span: default_span(),
+            type_: Type::int()
+        };
+
+        let arena = Arena::new();
+        let entry_point = Maker::entry_point(expr, &arena);
+
+        // MIRの内容を確認
+        let mut place_maker = PlaceMaker::new();
+        let result_place = place_maker.make();
+        let cond_place = place_maker.make();
+
+        // then/elseのplaceは同じresult_placeになる
+        let then_expected = Statement::Expr(Rvalue::Literal(result_place, Literal::Int("1".into())));
+        let else_expected = Statement::Expr(Rvalue::Literal(result_place, Literal::Int("0".into())));
+
+        // condの評価
+        let cond_stmt = Statement::Expr(Rvalue::Literal(cond_place, Literal::Bool(true)));
+
+        let stmts = entry_point.seq_front.statements.borrow();
+        // 最初の条件式
+        assert_eq!(stmts.front(), Some(&cond_stmt));
+
+        // if文の分岐先を確認
+        let terminator = entry_point.seq_front.terminator.borrow();
+        let Terminator::IfElse { cond, then, otherwise } = &*terminator else {
+            panic!("Expected IfElse terminator");
+        };
+        assert_eq!(*cond, Operand(cond_place));
+        // thenブロック
+        let then_stmts = then.statements.borrow();
+        assert_eq!(then_stmts.front(), Some(&then_expected));
+        // elseブロック
+        let else_stmts = otherwise.statements.borrow();
+        assert_eq!(else_stmts.front(), Some(&else_expected));
+    }
+}
