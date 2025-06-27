@@ -10,6 +10,7 @@
 
 mod core;
 mod create_mir;
+mod test;
 
 pub(crate) use core::*;
 pub(crate) use create_mir::Maker; 
