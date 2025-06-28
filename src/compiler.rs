@@ -1,5 +1,3 @@
-use combine::parser::Parser;
-use combine::EasyParser;
 use typed_arena::Arena;
 use crate::infer;
 use crate::parser;
