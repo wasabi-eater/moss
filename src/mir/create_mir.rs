@@ -1,6 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 use crate::{
-    hir, symbol::Symbol, thir::{Expression, ExpressionKind, Literal as ThirLiteral}, types::Type
+    hir, symbol::Symbol, thir::{Expression, ExpressionKind, Literal as ThirLiteral}, metadata::types::Type
 };
 use super::core::*;
 use literally::vecd;

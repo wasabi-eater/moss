@@ -11,7 +11,7 @@ pub mod parser;
 pub mod span;
 pub mod symbol;
 pub mod thir;
-pub mod types;
+pub mod metadata;
 pub mod lexer;
 pub mod token;
 pub use crate::compiler::compile_to_cpp;

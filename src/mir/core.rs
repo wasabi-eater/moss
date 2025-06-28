@@ -4,7 +4,7 @@ use std::hash;
 use std::rc::Rc;
 use std::collections::{HashMap, HashSet, LinkedList, VecDeque};
 use literally::hset;
-use crate::types::Type;
+use crate::metadata::types::Type;
 /// リテラル値を表現する列挙型
 ///
 #[derive(Clone, PartialEq)]

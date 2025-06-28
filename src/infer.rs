@@ -1,6 +1,6 @@
 use crate::span::Span;
 use crate::thir;
-use crate::types::{Type, TypeVar, VarMaker};
+use crate::metadata::types::{Type, TypeVar, VarMaker};
 use crate::hir;
 use std::fmt;
 use crate::errors::Error;

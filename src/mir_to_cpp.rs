@@ -1,5 +1,5 @@
 use crate::mir::{BinaryOperator, EntryPoint, Literal, Operand, Place, Rvalue, SeqBlock, Statement, Terminator, UnaryOperator};
-use crate::types::{Type, PrimitiveType};
+use crate::metadata::types::{Type, PrimitiveType};
 use std::collections::{HashMap, VecDeque};
 pub(crate)  struct MirToCppConverter<'blk> {
     cpp_code: String,

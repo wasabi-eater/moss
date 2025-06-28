@@ -2,7 +2,7 @@ use std::rc::Rc;
 use std::fmt;
 use itertools::Itertools;
 
-use crate::{span::{Span, Spanned}, hir::{BinaryOperator, UnaryOperator}, types::Type};
+use crate::{span::{Span, Spanned}, hir::{BinaryOperator, UnaryOperator}, metadata::types::Type};
 use crate::symbol::Symbol;
 
 #[derive(PartialEq)]

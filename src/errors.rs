@@ -1,7 +1,7 @@
 use std::fmt;
 use crate::span::{Position, Span, Spanned};
 use crate::token::Token;
-use crate::types::{Type, TypeVar};
+use crate::metadata::types::{Type, TypeVar};
 use crate::symbol::{Symbol, SymbolArena};
 use crate::hir;
 use itertools::Itertools;
